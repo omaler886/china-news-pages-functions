@@ -1,0 +1,63 @@
+name: Deploy Cloudflare Pages Functions
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: pages-functions-deploy
+  cancel-in-progress: true
+
+env:
+  PROJECT_NAME: china-news-pages-functions
+  PAGES_URL: https://china-news-pages-functions.pages.dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler pages deploy public --project-name "$PROJECT_NAME" --branch main
+
+      - name: Wait for deployment to be reachable
+        shell: bash
+        run: |
+          for i in {1..20}; do
+            if curl -fsS "$PAGES_URL/api/status" > /tmp/status.json; then
+              cat /tmp/status.json
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Deployment not reachable in time" >&2
+          exit 1
+
+      - name: Smoke test RSS
+        shell: bash
+        run: |
+          curl -fsS "$PAGES_URL/rss/all.xml" | tee /tmp/rss.xml
+          grep -q '<rss' /tmp/rss.xml
+
+      - name: Smoke test dashboard
+        shell: bash
+        run: |
+          curl -fsS "$PAGES_URL/dashboard" | tee /tmp/dashboard.html
+          grep -q 'China News' /tmp/dashboard.html
