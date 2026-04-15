@@ -168,6 +168,11 @@ https://china-news.frostcc.ggff.net/api/refresh?notify=1
 
 - 也支持在 GitHub Actions 页面手动触发
 - 调用后会校验返回 JSON，并检查 `/api/status`
+- 如果刷新失败，且 GitHub Secrets 中配置了：
+  - `TELEGRAM_BOT_TOKEN`
+  - `TELEGRAM_CHAT_ID`
+  - `TELEGRAM_MESSAGE_THREAD_ID`（可选）
+  则会自动发一条 Telegram 失败报警
 
 ## KV / Secret
 
@@ -200,6 +205,29 @@ npx wrangler secret put WEBHOOK_URLS
 其他可选变量见：
 
 - `D:\New project\china-news-pages-functions\.dev.vars.example`
+
+### Telegram 相关 Secret
+
+Pages Functions 这边现在已接入并支持：
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `TELEGRAM_MESSAGE_THREAD_ID`（可选，论坛 topic）
+- `TELEGRAM_SOURCE_ROUTING`（可选，按来源分频道/分群/分 topic）
+- `TELEGRAM_DISABLE_DEFAULT_PUSH`（可选）
+
+`TELEGRAM_SOURCE_ROUTING` 示例：
+
+```json
+{
+  "bbc": { "chatId": "-1001234567890" },
+  "wsj": { "chatId": "-1001234567890", "threadId": "12" },
+  "zaobao": { "chatId": "-1009876543210", "disableNotification": true }
+}
+```
+
+> 目前默认总频道推送已经打通。  
+> 如果你要真正“按来源分频道推送”，只需要把各个频道/群/topic 的 chat_id 发我，我就能直接帮你写进 `TELEGRAM_SOURCE_ROUTING`。
 
 ## 日志与巡检
 
