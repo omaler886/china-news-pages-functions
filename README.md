@@ -33,6 +33,8 @@
 - Telegram 按来源分频道推送
 - Email 推送（Resend）
 - Webhook 推送
+- GitHub Actions 自动部署工作流
+- Pages 日志 tail / 健康检查脚本
 
 ## 路由
 
@@ -91,6 +93,30 @@ npm install
 npm run dev
 ```
 
+## GitHub 自动部署
+
+已补好：
+
+- `D:\New project\china-news-pages-functions\.github\workflows\deploy-pages.yml`
+
+工作流行为：
+
+- push 到 `main` 自动部署到 Cloudflare Pages
+- `workflow_dispatch` 手动触发部署
+- 部署后自动 smoke test：
+  - `/api/status`
+  - `/rss/all.xml`
+  - `/dashboard`
+
+GitHub 仓库里需要配置以下 Secrets：
+
+```text
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+```
+
+> 当前本地已经把 Pages 项目创建好了，但还没有自动推到 GitHub，因为这台机器当前没有可直接复用的 GitHub API 凭据用于“自动创建新仓库并 push”。工作流文件已经准备好，一旦仓库建好并 push，自动部署就会生效。
+
 ## 部署
 
 ### 方式 1
@@ -114,6 +140,11 @@ cd D:\New project\china-news-pages-functions
 .\deploy-pages-functions.cmd
 ```
 
+当前已创建并成功部署的 Pages 项目：
+
+- `china-news-pages-functions`
+- 线上域名：`https://china-news-pages-functions.pages.dev`
+
 ## KV / Secret
 
 Pages Functions 同样可以绑定 KV 和 Secret。
@@ -123,6 +154,11 @@ Pages Functions 同样可以绑定 KV 和 Secret。
 先创建 KV namespace，然后填到：
 
 - `D:\New project\china-news-pages-functions\wrangler.toml`
+
+当前这份项目已经创建并写入了：
+
+- `NEWS_CACHE` 生产 namespace
+- `NEWS_CACHE` preview namespace
 
 ### Secret
 
@@ -140,6 +176,37 @@ npx wrangler secret put WEBHOOK_URLS
 其他可选变量见：
 
 - `D:\New project\china-news-pages-functions\.dev.vars.example`
+
+## 日志与巡检
+
+已补好脚本：
+
+- `D:\New project\china-news-pages-functions\scripts\tail-pages-logs.ps1`
+- `D:\New project\china-news-pages-functions\scripts\check-pages.ps1`
+
+### 实时看日志
+
+```powershell
+cd D:\New project\china-news-pages-functions
+powershell -ExecutionPolicy Bypass -File .\scripts\tail-pages-logs.ps1
+```
+
+### 巡检页面
+
+```powershell
+cd D:\New project\china-news-pages-functions
+powershell -ExecutionPolicy Bypass -File .\scripts\check-pages.ps1
+```
+
+### 当前看日志得到的结论
+
+我已经 tail 过线上 deployment，当前没有看到代码运行错误；主要是外部扫描器在请求这些不存在的路径：
+
+- `/info.php`
+- `/telescope/requests`
+- `/v2/api-docs`
+
+这些返回 `404`，属于正常现象，不是程序 bug。
 
 ## 和静态 Pages 版的区别
 

@@ -2,8 +2,7 @@ name = "china-news-pages-functions"
 compatibility_date = "2026-04-15"
 pages_build_output_dir = "./public"
 
-# Pages Functions 也可以绑定 KV / Secrets
-# [[kv_namespaces]]
-# binding = "NEWS_CACHE"
-# id = "your_production_namespace_id"
-# preview_id = "your_preview_namespace_id"
+[[kv_namespaces]]
+binding = "NEWS_CACHE"
+id = "e3e74784ee964949996b84a8cff24979"
+preview_id = "1790751acc0d441e8f8a140237ac080f"
