@@ -116,8 +116,12 @@ CLOUDFLARE_ACCOUNT_ID
 ```
 
 > 现在 GitHub 仓库和 Cloudflare Pages 项目都已经创建好了，代码也已经 push 上去。  
-> 但 **GitHub Actions 里真正执行 Cloudflare 部署，官方要求必须使用 `CLOUDFLARE_API_TOKEN`**。  
-> 如果这两个 secrets 没配置，工作流会自动跳过部署步骤，不会整条 workflow 报红。
+> 现在 workflow 同时支持两种 Cloudflare 认证方式：
+>
+> 1. `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`
+> 2. `CLOUDFLARE_API_KEY` + `CLOUDFLARE_EMAIL` + `CLOUDFLARE_ACCOUNT_ID`
+>
+> 如果两组都没配，工作流会自动跳过部署步骤，不会整条 workflow 报红。
 
 ## 部署
 
