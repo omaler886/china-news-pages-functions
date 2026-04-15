@@ -111,8 +111,9 @@ npm run dev
 GitHub 仓库里需要配置以下 Secrets：
 
 ```text
-CLOUDFLARE_API_TOKEN
-CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_OAUTH_TOKEN
+CLOUDFLARE_REFRESH_TOKEN
+CLOUDFLARE_OAUTH_EXPIRATION
 ```
 
 > 当前本地已经把 Pages 项目创建好了，但还没有自动推到 GitHub，因为这台机器当前没有可直接复用的 GitHub API 凭据用于“自动创建新仓库并 push”。工作流文件已经准备好，一旦仓库建好并 push，自动部署就会生效。
