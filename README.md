@@ -111,12 +111,13 @@ npm run dev
 GitHub 仓库里需要配置以下 Secrets：
 
 ```text
-CLOUDFLARE_OAUTH_TOKEN
-CLOUDFLARE_REFRESH_TOKEN
-CLOUDFLARE_OAUTH_EXPIRATION
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
 ```
 
-> 当前本地已经把 Pages 项目创建好了，但还没有自动推到 GitHub，因为这台机器当前没有可直接复用的 GitHub API 凭据用于“自动创建新仓库并 push”。工作流文件已经准备好，一旦仓库建好并 push，自动部署就会生效。
+> 现在 GitHub 仓库和 Cloudflare Pages 项目都已经创建好了，代码也已经 push 上去。  
+> 但 **GitHub Actions 里真正执行 Cloudflare 部署，官方要求必须使用 `CLOUDFLARE_API_TOKEN`**。  
+> 如果这两个 secrets 没配置，工作流会自动跳过部署步骤，不会整条 workflow 报红。
 
 ## 部署
 

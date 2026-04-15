@@ -31,21 +31,26 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Configure Wrangler OAuth session
+      - name: Check Cloudflare deploy secrets
+        id: cf-secrets
         shell: bash
         run: |
-          mkdir -p "$HOME/.config/.wrangler/config"
-          cat > "$HOME/.config/.wrangler/config/default.toml" <<'EOF'
-          oauth_token = "${{ secrets.CLOUDFLARE_OAUTH_TOKEN }}"
-          expiration_time = "${{ secrets.CLOUDFLARE_OAUTH_EXPIRATION }}"
-          refresh_token = "${{ secrets.CLOUDFLARE_REFRESH_TOKEN }}"
-          scopes = [ "account:read", "user:read", "workers:write", "workers_kv:write", "workers_routes:write", "workers_scripts:write", "workers_tail:read", "d1:write", "pages:write", "zone:read", "ssl_certs:write", "ai:write", "ai-search:write", "ai-search:run", "queues:write", "pipelines:write", "secrets_store:write", "containers:write", "cloudchamber:write", "connectivity:admin", "offline_access" ]
-          EOF
+          if [[ -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" && -n "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare deploy secrets are missing; skipping deployment."
+          fi
 
       - name: Deploy to Cloudflare Pages
+        if: steps.cf-secrets.outputs.enabled == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler pages deploy public --project-name "$PROJECT_NAME" --branch main
 
       - name: Wait for deployment to be reachable
+        if: steps.cf-secrets.outputs.enabled == 'true'
         shell: bash
         run: |
           for i in {1..20}; do
@@ -59,13 +64,20 @@ jobs:
           exit 1
 
       - name: Smoke test RSS
+        if: steps.cf-secrets.outputs.enabled == 'true'
         shell: bash
         run: |
           curl -fsS "$PAGES_URL/rss/all.xml" | tee /tmp/rss.xml
           grep -q '<rss' /tmp/rss.xml
 
       - name: Smoke test dashboard
+        if: steps.cf-secrets.outputs.enabled == 'true'
         shell: bash
         run: |
           curl -fsS "$PAGES_URL/dashboard" | tee /tmp/dashboard.html
           grep -q 'China News' /tmp/dashboard.html
+
+      - name: Skip notice
+        if: steps.cf-secrets.outputs.enabled != 'true'
+        run: |
+          echo "Skipping Cloudflare deploy because CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not configured."
