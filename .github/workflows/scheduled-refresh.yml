@@ -1,0 +1,41 @@
+name: Scheduled refresh and notify
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: pages-functions-refresh
+  cancel-in-progress: true
+
+env:
+  REFRESH_URL: https://china-news.frostcc.ggff.net/api/refresh?notify=1
+  STATUS_URL: https://china-news.frostcc.ggff.net/api/status
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger refresh
+        shell: bash
+        run: |
+          curl -fsS "$REFRESH_URL" > refresh.json
+          cat refresh.json
+
+      - name: Validate response
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          with open('refresh.json','r',encoding='utf-8') as f:
+              data=json.load(f)
+          assert data.get('ok') is True
+          print('refresh ok, generatedAt=', data.get('generatedAt'))
+          PY
+
+      - name: Check status endpoint
+        shell: bash
+        run: |
+          curl -fsS "$STATUS_URL" > status.json
+          cat status.json

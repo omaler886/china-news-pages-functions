@@ -150,6 +150,24 @@ cd D:\New project\china-news-pages-functions
 
 - `china-news-pages-functions`
 - 线上域名：`https://china-news-pages-functions.pages.dev`
+- 自定义域名：`https://china-news.frostcc.ggff.net`
+
+## GitHub 定时刷新
+
+已新增工作流：
+
+- `D:\New project\china-news-pages-functions\.github\workflows\scheduled-refresh.yml`
+
+行为：
+
+- 每 30 分钟调用一次：
+
+```text
+https://china-news.frostcc.ggff.net/api/refresh?notify=1
+```
+
+- 也支持在 GitHub Actions 页面手动触发
+- 调用后会校验返回 JSON，并检查 `/api/status`
 
 ## KV / Secret
 
