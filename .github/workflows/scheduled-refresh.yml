@@ -45,7 +45,7 @@ jobs:
           cat status.json
 
       - name: Send Telegram failure alert
-        if: failure() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != ''
+        if: failure()
         shell: bash
         env:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -59,6 +59,9 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, urllib.request
+          if not os.environ.get("TG_BOT_TOKEN") or not os.environ.get("TG_CHAT_ID"):
+              print("Telegram alert secrets are missing; skip failure alert.")
+              raise SystemExit(0)
           text = (
               "⚠️ 定时刷新失败\n"
               f"仓库: {os.environ['REPO']}\n"
