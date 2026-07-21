@@ -2,6 +2,10 @@ name = "china-news-pages-functions"
 compatibility_date = "2026-04-15"
 pages_build_output_dir = "./public"
 
+[vars]
+TRANSLATION_ENABLED = "1"
+TRANSLATION_URL = "https://translate.frostcc.ggff.net"
+
 [[kv_namespaces]]
 binding = "NEWS_CACHE"
 id = "e3e74784ee964949996b84a8cff24979"
