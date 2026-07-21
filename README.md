@@ -206,6 +206,19 @@ npx wrangler secret put WEBHOOK_URLS
 
 - `D:\New project\china-news-pages-functions\.dev.vars.example`
 
+### 新闻翻译
+
+项目默认通过部署在 `ntt2` 的 LibreTranslate 将英文标题和摘要翻译为简体中文：
+
+- `title`、`summary`：供页面、RSS 和通知直接使用的中文内容
+- `originalTitle`、`originalSummary`：保留的新闻原文
+- `translated`：本条新闻是否成功应用译文
+- `TRANSLATION_ENABLED`：设为 `0`、`false` 或 `off` 可关闭翻译
+- `TRANSLATION_URL`：默认使用 `https://translate.frostcc.ggff.net`
+- `LIBRETRANSLATE_API_KEY`：必须配置为 Pages Secret，不得写入仓库
+
+译文直接保存在已有快照中，并沿用 7 天 TTL，不会为每篇文章创建永久 KV key。翻译服务调用失败时会自动保留原文，不影响新闻刷新。
+
 ### Telegram 相关 Secret
 
 Pages Functions 这边现在已接入并支持：

@@ -20,6 +20,9 @@ const MAX_HISTORY_ITEMS = 120;
 const DEFAULT_HISTORY_LIMIT = 30;
 const DEFAULT_CRON = '*/30 * * * *';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
+const DEFAULT_TRANSLATION_URL = 'https://translate.frostcc.ggff.net';
+const TARGET_LANGUAGE = 'zh-CN';
+const TRANSLATION_BATCH_SIZE = 5;
 const RSS_COPYRIGHT = '© China News Pages Functions. Article metadata belongs to original publishers.';
 
 const DEFAULT_HEADERS = {
@@ -332,7 +335,8 @@ export default {
 
 async function refreshSnapshot(env, options = {}) {
   const previousSnapshot = await loadSnapshotFromKv(env);
-  const snapshot = await buildLiveSnapshot();
+  const liveSnapshot = await buildLiveSnapshot();
+  const snapshot = await translateSnapshot(env, liveSnapshot);
   const diff = buildSnapshotDiff(previousSnapshot, snapshot);
   const persisted = await persistSnapshotToKv(env, snapshot, options, {
     previousSnapshot,
@@ -359,6 +363,168 @@ async function refreshSnapshot(env, options = {}) {
     telegram: notifications.telegram,
     email: notifications.email,
     webhook: notifications.webhook
+  };
+}
+
+/**
+ * 判断文本是否已经包含中文，避免浪费翻译调用并降低延迟。
+ * @param {string} text 待检查文本。
+ * @returns {boolean} 文本是否包含中文字符。
+ */
+function containsChinese(text) {
+  return /[\u3400-\u9fff]/u.test(String(text || ''));
+}
+
+/**
+ * 请求一小批 LibreTranslate 译文，避免超过服务端批量限制。
+ * @param {object} env Pages Functions 环境绑定。
+ * @param {string} sourceId 新闻来源标识。
+ * @param {Array<object>} articles 该来源的文章列表。
+ * @returns {Promise<Array<[string, {title: string, summary: string}]>>} 文章链接和译文条目。
+ */
+async function requestArticleTranslations(env, sourceId, articles) {
+  const fields = articles.flatMap((article) => [
+    ...(!containsChinese(article.title)
+      ? [{ articleId: article.link, field: 'title', text: article.title }]
+      : []),
+    ...(article.summary && !containsChinese(article.summary)
+      ? [{ articleId: article.link, field: 'summary', text: article.summary }]
+      : [])
+  ]);
+  if (!fields.length) {
+    return [];
+  }
+
+  const translationUrl = cleanText(env.TRANSLATION_URL || DEFAULT_TRANSLATION_URL).replace(/\/$/, '');
+  const response = await fetch(`${translationUrl}/translate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      q: fields.map((item) => item.text),
+      source: 'en',
+      target: 'zh',
+      format: 'text',
+      api_key: env.LIBRETRANSLATE_API_KEY
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`libretranslate_failed ${sourceId} ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const translatedTexts = Array.isArray(payload.translatedText)
+    ? payload.translatedText
+    : [payload.translatedText];
+  const translations = new Map();
+  fields.forEach((field, index) => {
+    const currentTranslation = translations.get(field.articleId) ?? {};
+    currentTranslation[field.field] = cleanText(translatedTexts[index] || '');
+    translations.set(field.articleId, currentTranslation);
+  });
+
+  return [...translations.entries()];
+}
+
+/**
+ * 批量翻译单个来源的文章，限制单次输入规模以避免模型输出截断。
+ * @param {object} env Pages Functions 环境绑定。
+ * @param {string} sourceId 新闻来源标识。
+ * @param {Array<object>} articles 该来源的文章列表。
+ * @returns {Promise<Map<string, {title: string, summary: string}>>} 以文章链接为键的译文。
+ */
+async function translateSourceArticles(env, sourceId, articles) {
+  const pendingArticles = articles.filter((article) => {
+    return !containsChinese(article.title) || (article.summary && !containsChinese(article.summary));
+  });
+  const translations = new Map();
+
+  for (let index = 0; index < pendingArticles.length; index += TRANSLATION_BATCH_SIZE) {
+    const batch = pendingArticles.slice(index, index + TRANSLATION_BATCH_SIZE);
+    const translatedEntries = await requestArticleTranslations(env, sourceId, batch);
+    for (const [articleId, translation] of translatedEntries) {
+      translations.set(articleId, translation);
+    }
+  }
+
+  return translations;
+}
+
+/**
+ * 将译文应用到文章，同时保留原始标题和摘要用于追溯。
+ * @param {object} article 原始文章。
+ * @param {{title?: string, summary?: string} | undefined} translation 译文。
+ * @returns {object} 翻译后的文章。
+ */
+function applyArticleTranslation(article, translation) {
+  const translatedTitle = cleanText(translation?.title || '');
+  const translatedSummary = cleanText(translation?.summary || '');
+  const title = containsChinese(article.title) ? article.title : translatedTitle || article.title;
+  const summary = !article.summary || containsChinese(article.summary)
+    ? article.summary
+    : translatedSummary || article.summary;
+
+  return {
+    ...article,
+    originalTitle: article.title,
+    originalSummary: article.summary,
+    title,
+    summary,
+    language: TARGET_LANGUAGE,
+    translated: title !== article.title || summary !== article.summary
+  };
+}
+
+/**
+ * 翻译整份快照；AI 未配置或调用失败时明确回退到原文。
+ * @param {object} env Pages Functions 环境绑定。
+ * @param {object} snapshot 原始新闻快照。
+ * @returns {Promise<object>} 可直接持久化和推送的快照。
+ */
+async function translateSnapshot(env, snapshot) {
+  const isTranslationEnabled = !['0', 'false', 'off'].includes(
+    String(env?.TRANSLATION_ENABLED ?? '1').trim().toLowerCase()
+  );
+  if (!isTranslationEnabled || !env?.LIBRETRANSLATE_API_KEY) {
+    return snapshot;
+  }
+
+  const translationFailures = {};
+  const translatedSources = await Promise.all(SOURCE_ORDER.map(async (sourceId) => {
+    const source = snapshot.sources?.[sourceId];
+    if (!source?.items?.length) {
+      return [sourceId, source];
+    }
+
+    try {
+      const translations = await translateSourceArticles(env, sourceId, source.items);
+      const items = source.items.map((article) => {
+        return applyArticleTranslation(article, translations.get(article.link));
+      });
+      return [sourceId, { ...source, items, headline: items[0] ?? null }];
+    } catch (error) {
+      console.error(`translation_failed ${sourceId}`, error);
+      translationFailures[sourceId] = toErrorMessage(error);
+      return [sourceId, source];
+    }
+  }));
+  const sources = Object.fromEntries(translatedSources);
+  const headlines = SOURCE_ORDER.map((sourceId) => sources[sourceId]?.headline).filter(Boolean);
+  const articles = SOURCE_ORDER.flatMap((sourceId) => sources[sourceId]?.items ?? []).sort(sortArticles);
+
+  return {
+    ...snapshot,
+    version: 2,
+    headlines,
+    articles,
+    sources,
+    translation: {
+      enabled: true,
+      targetLanguage: TARGET_LANGUAGE,
+      provider: 'LibreTranslate',
+      endpoint: cleanText(env.TRANSLATION_URL || DEFAULT_TRANSLATION_URL),
+      translatedArticles: articles.filter((article) => article.translated).length,
+      failedSources: translationFailures
+    }
   };
 }
 
@@ -480,6 +646,7 @@ function projectPayload(snapshot, { limit, sourceId }) {
     ok: true,
     version: snapshot.version ?? 1,
     generatedAt: snapshot.generatedAt || new Date().toISOString(),
+    translation: snapshot.translation ?? { enabled: false },
     filters: {
       scope: 'china',
       source: sourceId ?? 'all',
@@ -549,6 +716,7 @@ async function persistSnapshotToKv(env, snapshot, options = {}, context = {}) {
   let historyPersisted = false;
   let historyEntry = null;
   let nextHistoryIndex = historyIndex;
+  const cleanupDeletes = [];
   const writes = [
     env.NEWS_CACHE.put(KV_SNAPSHOT_KEY, JSON.stringify(snapshot), { expirationTtl: KV_SNAPSHOT_TTL }),
     env.NEWS_CACHE.put(KV_SNAPSHOT_META_KEY, JSON.stringify(meta), { expirationTtl: KV_SNAPSHOT_TTL })
@@ -588,7 +756,7 @@ async function persistSnapshotToKv(env, snapshot, options = {}, context = {}) {
     if (removed.length && typeof env.NEWS_CACHE.delete === 'function') {
       for (const item of removed) {
         if (item?.key) {
-          writes.push(env.NEWS_CACHE.delete(item.key));
+          cleanupDeletes.push(env.NEWS_CACHE.delete(item.key));
         }
       }
     }
@@ -622,6 +790,13 @@ async function persistSnapshotToKv(env, snapshot, options = {}, context = {}) {
   );
 
   await Promise.all(writes);
+  if (cleanupDeletes.length) {
+    const cleanupResults = await Promise.allSettled(cleanupDeletes);
+    const failedDeletes = cleanupResults.filter((result) => result.status === 'rejected');
+    if (failedDeletes.length) {
+      console.warn(`history_cleanup_failed ${failedDeletes.length}/${cleanupDeletes.length}`);
+    }
+  }
 
   return {
     attempted: true,
