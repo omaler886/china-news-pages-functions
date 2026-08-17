@@ -2,12 +2,14 @@
   "name": "china-news-pages-functions",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "wrangler pages dev public",
-    "deploy": "wrangler pages deploy public --project-name china-news-pages-functions"
+    "deploy": "wrangler pages deploy public --project-name china-news-pages-functions",
+    "build": "node build.mjs"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "wrangler": "^4.14.1"
-  }
+  },
+  "type": "module"
 }
